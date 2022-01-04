@@ -40,9 +40,9 @@ var config = new Config({
   maxSineOpacity: 1.0,
   sineFrequency: 1.0,
   useFlatCurlNoise: false,
-  noiseZOffset: 10.0,
-  noiseXOffset: 2.0,
-  noiseYOffset: -10.0,
+  noiseZOffset: 100.0,
+  noiseXOffset: 0.0,
+  noiseYOffset: 10.0,
 });
 
 var phi = 0;
@@ -356,8 +356,8 @@ function curl3d(rawX, rawY, rawZ, noiseFunction) {
   curl.x = a - b;
 
   //Find rate of change in XZ plane
-  n1 = noiseFunction(x, y + config.noiseYOffset, z + eps);
-  n2 = noiseFunction(x, y + config.noiseYOffset, z - eps);
+  n1 = noiseFunction(x, y, z + eps);
+  n2 = noiseFunction(x, y, z - eps);
   a = (n1 - n2) / (2 * eps);
   n1 = noiseFunction(x + eps, y + config.noiseYOffset, z);
   n2 = noiseFunction(x - eps, y + config.noiseYOffset, z);
