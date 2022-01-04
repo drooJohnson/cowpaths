@@ -3,13 +3,18 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as dat from "dat.gui";
 import { Noise } from "noisejs";
-
-import { getBlackbodyColor } from "./colors";
+import { ParticleSystem } from "./particles";
+import { Config } from "./config";
+import { BlackbodyColorGenerator } from "./colors";
+import {
+  getPointInSphereUniform,
+  getPointInSphereWeighted,
+} from "./sphereSampler";
 
 // Config
 // When using additive blending, the opacity can drop to 0.0025 and still work
 // For normal blending, it must be set higher, closer to 0.01
-var config = {
+var config = new Config({
   numParticles: 2500,
   vMin: 0.0001,
   maxSpeed: 0.002,
@@ -30,70 +35,41 @@ var config = {
   noiseScale: 1.0,
   noiseType: "SIMPLEX",
   usePerspectiveSizing: false,
-  useSineWaveOpacity: true,
+  useSineWaveOpacity: false,
   minSineOpacity: 0.0,
   maxSineOpacity: 1.0,
   sineFrequency: 1.0,
-};
+  useFlatCurlNoise: false,
+  noiseZOffset: 10.0,
+  noiseXOffset: 2.0,
+  noiseYOffset: -10.0,
+});
+
+var phi = 0;
+var easingPhi = 0;
+var theta = 0;
+var easingTheta = 0;
 
 var configHasChanged = false;
 const perspectiveScalingFactor = 1.125;
-// Util Functions
-
-const getBlackbodyColorByDistanceFromCenter = (position) => {
-  const distanceFromCenter = position.length();
-  const distanceScaled =
-    distanceFromCenter / (config.spawnSphereDiameter * 0.5);
-  const color = getBlackbodyColor(
-    distanceScaled,
-    config.blackbodySaturation,
-    config.blackbodyOffset,
-    config.blackbodyScale
-  );
-  return color;
-};
-
-const getPointInSphereUniform = (diameter) => {
-  var d, x, y, z;
-  do {
-    x = Math.random() * 2 - 1;
-    y = Math.random() * 2 - 1;
-    z = Math.random() * 2 - 1;
-    d = x * x + y * y + z * z;
-  } while (d > diameter);
-
-  return new THREE.Vector3(x, y, z);
-};
-
-const getPointInSphereWeighted = (diameter) => {
-  var d, x, y, z;
-  do {
-    x = Math.random() * 2 - 1;
-    y = Math.random() * 2 - 1;
-    z = Math.random() * 2 - 1;
-    d = x * x + y * y + z * z;
-  } while (d > 1.0);
-
-  diameter *= Math.random();
-  return new THREE.Vector3(x * diameter, y * diameter, z * diameter);
-};
 
 // Init Noise
 let noise;
 let noiseFunc;
 let currNoiseScale;
 function initNoise() {
-  noise = new Noise(config.noiseSeed);
+  let { noiseType, noiseScale, noiseSeed } = config.get();
+  noise = new Noise(noiseSeed);
   noiseFunc =
-    config.noiseType === "SIMPLEX"
+    noiseType === "SIMPLEX"
       ? (x, y, z) => noise.simplex3(x, y, z)
       : (x, y, z) => noise.perlin3(x, y, z);
-  currNoiseScale = config.noiseScale;
+  currNoiseScale = noiseScale;
 }
 
 initNoise();
 
-const getPointInSphere = config.useWeightedSphereSampling
+const getPointInSphere = config.getParam("useWeightedSphereSampling")
   ? getPointInSphereWeighted
   : getPointInSphereUniform;
 
@@ -103,78 +79,8 @@ const canvas = document.querySelector("canvas.webgl");
 // Scene
 const scene = new THREE.Scene();
 
-// Objects
-const positions = [];
-const colors = [];
-const velocities = [];
-const speeds = [];
-const colorArray = [
-  new THREE.Color(0xff0080),
-  new THREE.Color(0x0080ff),
-  new THREE.Color(0x80ff00),
-  new THREE.Color(0xffff00),
-  new THREE.Color(0xff0000),
-];
+const particles = new ParticleSystem(config.getParam("numParticles"));
 
-const monoChromeColor = new THREE.Color(0xffffff);
-
-let lockedNumParticles;
-function initParticles() {
-  lockedNumParticles = config.numParticles;
-  positions.splice(0, positions.length);
-  colors.splice(0, colors.lengths);
-  velocities.splice(0, velocities.length);
-  speeds.splice(0, speeds.length);
-
-  for (let i = 0; i < lockedNumParticles; i++) {
-    let x = i * 3;
-    let y = i * 3 + 1;
-    let z = i * 3 + 2;
-
-    const newP = getPointInSphere(config.spawnSphereDiameter);
-    positions[x] = newP.x;
-    positions[y] = newP.y;
-    positions[z] = newP.z;
-
-    const clr = config.useMonochromeParticles
-      ? monoChromeColor
-      : config.useBlackbodyColors
-      ? getBlackbodyColorByDistanceFromCenter(newP)
-      : colorArray[Math.floor(Math.random() * colorArray.length)];
-
-    colors[x] = clr.r;
-    colors[y] = clr.g;
-    colors[z] = clr.b;
-
-    let speed = Math.random();
-
-    velocities[x] = Math.random() - 0.5;
-    velocities[y] = Math.random() - 0.5;
-    velocities[z] = Math.random() - 0.5;
-    speeds[i] = speed;
-  }
-}
-
-initParticles();
-
-let geometry;
-// Set up Buffer Geometry Attributes
-function initGeometry() {
-  geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(positions, 3)
-  );
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setAttribute(
-    "velocity",
-    new THREE.Float32BufferAttribute(velocities, 3)
-  );
-}
-
-initGeometry();
-
-// Materials
 const material = new THREE.PointsMaterial({
   size: config.usePerspectiveSizing
     ? config.sizeBase * perspectiveScalingFactor
@@ -189,26 +95,13 @@ const material = new THREE.PointsMaterial({
   depthTest: config.useDepthTest,
 });
 
-// Mesh
-let mesh;
-function initMesh() {
-  if (mesh !== undefined) {
-    scene.remove(mesh);
-  }
-  mesh = new THREE.Points(geometry, material);
-  scene.add(mesh);
-}
+let colorizer = new BlackbodyColorGenerator(
+  config.blackbodySaturation,
+  config.blackbodyOffset,
+  config.blackbodyScale
+);
 
-initMesh();
-// let sphereGeometry = new THREE.SphereBufferGeometry(1);
-// let sphereMaterial = new THREE.MeshStandardMaterial({
-//   color: 0xffffff,
-//   roughness: 0.5,
-//   metalness: 0.5,
-// });
-// let sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
-// scene.add(sphereMesh);
-// Lights
+particles.init(config, getPointInSphere, colorizer, material, scene);
 
 const pointLight = new THREE.PointLight(0xffffff, 0.1);
 pointLight.position.x = 2;
@@ -253,6 +146,20 @@ camera.position.y = 0;
 camera.position.z = 2;
 scene.add(camera);
 
+function updateCamera() {
+  easingTheta += (theta - easingTheta) * 0.02;
+  easingPhi += (phi - easingPhi) * 0.02;
+
+  //console.log(theta);
+  //console.log(phi);
+
+  camera.position.y = 2 * Math.sin(easingTheta);
+  camera.position.x = 2 * Math.cos(easingTheta) * Math.cos(easingPhi);
+  camera.position.z = 2 * Math.cos(easingTheta) * Math.sin(easingPhi);
+
+  camera.lookAt(scene.position);
+}
+
 // Controls
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
@@ -275,6 +182,38 @@ renderer.autoClearColor = false;
 
 const clock = new THREE.Clock();
 
+var pressed = {};
+
+function handleDown(e) {
+  pressed[e.keyCode] = true;
+}
+function handleUp(e) {
+  pressed[e.keyCode] = false;
+  if (e.keyCode === 82) {
+    buttons.clearAndReset();
+  }
+  if (e.keyCode === 32) {
+    buttons.reset();
+  }
+  if (e.keyCode === 83) {
+    buttons.reseed();
+  }
+}
+
+function handleKeys() {
+  // Left
+  if (pressed[37]) phi += 0.05;
+  // Right
+  if (pressed[39]) phi -= 0.05;
+  // Up
+  if (pressed[38]) theta += 0.05;
+  // Down
+  if (pressed[40]) theta -= 0.05;
+}
+
+document.onkeydown = handleDown;
+document.onkeyup = handleUp;
+
 const tick = () => {
   const elapsedTime = clock.getElapsedTime();
 
@@ -286,51 +225,15 @@ const tick = () => {
       config.minSineOpacity;
   }
 
-  const p = mesh.geometry.attributes.position.array;
-  const v = mesh.geometry.attributes.velocity.array;
-  const c = mesh.geometry.attributes.color.array;
-  let index = 0;
+  particles.update(config.maxSpeed, config.minSpeed, (x, y, z) =>
+    curl3d(x, y, z, noiseFunc)
+  );
 
-  for (let i = 0; i < lockedNumParticles; i++) {
-    let x = index++;
-    let y = index++;
-    let z = index++;
-
-    let pt = curl3d(p[x], p[y], p[x]);
-    let speed =
-      speeds[i] * (config.maxSpeed - config.minSpeed) + config.minSpeed;
-
-    v[x] = pt.x * speed;
-    v[y] = pt.y * speed;
-    v[z] = pt.z * speed;
-
-    if (
-      v[x] < config.vMin * 0.75 &&
-      v[y] < config.vMin * 0.75 &&
-      v[z] < config.vMin * 0.75
-    ) {
-      let newP = getPointInSphere(config.spawnSphereDiameter);
-      let newClr = getBlackbodyColorByDistanceFromCenter(newP);
-      c[x] = newClr.r;
-      c[y] = newClr.g;
-      c[z] = newClr.b;
-      p[x] = newP.x;
-      p[y] = newP.y;
-      p[z] = newP.z;
-
-      mesh.geometry.attributes.color.needsUpdate = true;
-    } else {
-      p[x] = p[x] + v[x];
-      p[y] = p[y] + v[y];
-      p[z] = p[z] + v[z];
-    }
-  }
-
-  mesh.geometry.attributes.position.needsUpdate = true;
-  mesh.geometry.attributes.velocity.needsUpdate = true;
-
-  // Update Orbital Controls
-  // controls.update()
+  colorizer.saturation = config.getParam("blackbodySaturation");
+  colorizer.offset = config.getParam("blackbodyOffset");
+  colorizer.scale = config.getParam("blackbodyScale");
+  handleKeys();
+  updateCamera();
 
   // Render
   renderer.render(scene, camera);
@@ -342,14 +245,12 @@ const tick = () => {
 function resetScene() {
   configHasChanged = false;
   initNoise();
-  initParticles();
-  initGeometry();
-  initMesh();
+  particles.init(config, getPointInSphere, colorizer, material, scene);
 }
 
 // Debug
 const gui = new dat.GUI();
-const noiseFolder = gui.addFolder("Stats");
+const noiseFolder = gui.addFolder("Noise");
 noiseFolder
   .add(config, "noiseSeed", 0, 1, 0.00001)
   .listen()
@@ -366,6 +267,10 @@ noiseFolder
   .onChange(function (value) {
     configHasChanged = true;
   });
+noiseFolder.add(config, "useFlatCurlNoise");
+noiseFolder.add(config, "noiseZOffset", -100, 100, 0.01);
+noiseFolder.add(config, "noiseXOffset", -100, 100, 0.01);
+noiseFolder.add(config, "noiseYOffset", -100, 100, 0.01);
 noiseFolder.open();
 
 const systemFolder = gui.addFolder("System");
@@ -430,39 +335,41 @@ gui.add(buttons, "reseed");
 
 tick();
 
-function curl3d(rawX, rawY, rawZ) {
+function curl3d(rawX, rawY, rawZ, noiseFunction) {
   var eps = 0.0001;
   var curl = new THREE.Vector3();
 
   const x = rawX * currNoiseScale;
   const y = rawY * currNoiseScale;
-  const z = rawZ * currNoiseScale;
+  const z = config.useFlatCurlNoise
+    ? rawX * currNoiseScale
+    : rawZ * currNoiseScale;
 
-  var n1 = noiseFunc(x, y + eps, z);
-  var n2 = noiseFunc(x, y - eps, z);
+  var n1 = noiseFunction(x, y + eps, z + config.noiseZOffset);
+  var n2 = noiseFunction(x, y - eps, z + config.noiseZOffset);
   // Average to find approximate derivative
   var a = (n1 - n2) / (2 * eps);
-  var n1 = noiseFunc(x, y, z + eps);
-  var n2 = noiseFunc(x, y, z - eps);
+  var n1 = noiseFunction(x, y, z + eps);
+  var n2 = noiseFunction(x, y, z - eps);
   // Average to find approximate derivative
   var b = (n1 - n2) / (2 * eps);
   curl.x = a - b;
 
   //Find rate of change in XZ plane
-  n1 = noiseFunc(x, y, z + eps);
-  n2 = noiseFunc(x, y, z - eps);
+  n1 = noiseFunction(x, y + config.noiseYOffset, z + eps);
+  n2 = noiseFunction(x, y + config.noiseYOffset, z - eps);
   a = (n1 - n2) / (2 * eps);
-  n1 = noiseFunc(x + eps, y, z);
-  n2 = noiseFunc(x - eps, y, z);
+  n1 = noiseFunction(x + eps, y + config.noiseYOffset, z);
+  n2 = noiseFunction(x - eps, y + config.noiseYOffset, z);
   b = (n1 - n2) / (2 * eps);
   curl.y = a - b;
 
   //Find rate of change in XY plane
-  n1 = noiseFunc(x + eps, y, z);
-  n2 = noiseFunc(x - eps, y, z);
+  n1 = noiseFunction(x + eps, y, z);
+  n2 = noiseFunction(x - eps, y, z);
   a = (n1 - n2) / (2 * eps);
-  n1 = noiseFunc(x, y + eps, z);
-  n2 = noiseFunc(x, y - eps, z);
+  n1 = noiseFunction(x + config.noiseXOffset, y + eps, z);
+  n2 = noiseFunction(x + config.noiseXOffset, y - eps, z);
   b = (n1 - n2) / (2 * eps);
   curl.z = a - b;
 
