@@ -1,11 +1,15 @@
-# Three.js Starter
-Courtesy of Bruno Simon of https://threejs-journey.xyz/
+# Cowpaths
+
+Built on the Three.js starter at https://github.com/designcourse/threejs-webpack-starter
+
+Particles trace paths through configurable 3D curl noise.
 
 ## Setup
+
 Download [Node.js](https://nodejs.org/en/download/).
 Run this followed commands:
 
-``` bash
+```bash
 # Install dependencies (only the first time)
 npm install
 
