@@ -3,6 +3,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "webpack --config ./bundler/webpack.prod.js",
+    "build-pages": "webpack --config ./bundler/webpack.pages.js",
     "dev": "webpack serve --config ./bundler/webpack.dev.js"
   },
   "dependencies": {
