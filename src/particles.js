@@ -78,7 +78,7 @@ export class ParticleSystem {
     this.scene.add(this.mesh);
   }
 
-  update(maxSpeed, minSpeed, noiseSampler) {
+  update(maxSpeed, minSpeed, vMin, noiseSampler) {
     let p = this.mesh.geometry.attributes.position.array;
     let v = this.mesh.geometry.attributes.velocity.array;
     let c = this.mesh.geometry.attributes.color.array;
@@ -96,11 +96,7 @@ export class ParticleSystem {
       v[y] = pt.y * speed;
       v[z] = pt.z * speed;
 
-      if (
-        v[x] < minSpeed * 0.75 &&
-        v[y] < minSpeed * 0.75 &&
-        v[z] < minSpeed * 0.75
-      ) {
+      if (v[x] < vMin * 0.75 && v[y] < vMin * 0.75 && v[z] < vMin * 0.75) {
         this.respawnParticle(i, c, p, v);
       } else {
         p[x] = p[x] + v[x];
