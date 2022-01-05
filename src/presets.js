@@ -28,7 +28,7 @@ export let presets = {
     noiseZOffset: 100.0,
     noiseXOffset: 0.0,
     noiseYOffset: 10.0,
-    customResolution: true,
+    customResolution: false,
     customResolutionX: 2048,
     customResolutionY: 2048,
     cameraDistance: 2,
