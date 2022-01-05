@@ -295,12 +295,12 @@ const tick = () => {
 function resetScene() {
   configHasChanged = false;
   initNoise();
-  initRenderer();
   particles.init(config, getPointInSphere, colorizer, material, scene);
 }
 
 // Debug
 let gui;
+let perspectiveSizingControl;
 
 function initDatGui() {
   if (gui !== undefined) {
@@ -350,7 +350,7 @@ function initDatGui() {
     .onChange(setNewSize)
     .listen();
   pointRenderingFolder.add(material, "opacity", 0.0025, 1, 0.0005);
-  const perspectiveSizingControl = pointRenderingFolder
+  perspectiveSizingControl = pointRenderingFolder
     .add(config, "usePerspectiveSizing")
     .onChange(function (value) {
       material.size = value
@@ -398,6 +398,7 @@ function initDatGui() {
       config.set(presets[value]);
       updateGuiDisplay();
       renderer.clear();
+      initRenderer();
       resetScene();
     });
 
