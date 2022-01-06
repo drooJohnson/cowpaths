@@ -27,7 +27,7 @@ var theta = 0;
 var easingTheta = 0;
 
 var configHasChanged = false;
-const perspectiveScalingFactor = 1.125;
+//const perspectiveScalingFactor = 1.125;
 
 // Init Noise
 let noise;
@@ -58,11 +58,11 @@ const scene = new THREE.Scene();
 const particles = new ParticleSystem(config.getParam("numParticles"));
 
 const material = new THREE.PointsMaterial({
-  size: config.usePerspectiveSizing
+  size: /*config.usePerspectiveSizing
     ? config.sizeBase * perspectiveScalingFactor
-    : config.sizeBase,
+    :*/ config.sizeBase,
   vertexColors: true,
-  sizeAttenuation: config.usePerspectiveSizing,
+  sizeAttenuation: false, //config.usePerspectiveSizing,
   opacity: config.particleOpacity * (config.useAdditiveBlending ? 1 : 2),
   blending: config.useAdditiveBlending
     ? THREE.AdditiveBlending
@@ -93,6 +93,8 @@ const sizes = {
   height: window.innerHeight,
 };
 
+var windowWidth = window.innerWidth;
+var windowHeight = window.innerHeight;
 window.addEventListener("resize", () => {
   if (
     config.customResolution &&
@@ -102,23 +104,24 @@ window.addEventListener("resize", () => {
     return;
   }
 
-  setRendererSize();
-});
+  if (
+    window.innerWidth === windowWidth &&
+    window.innerHeight === windowHeight
+  ) {
+    alert("Aborted resize");
+  }
 
-function setRendererSize() {
-  // const canvas = renderer.domElement;
-  const pixelRatio = window.devicePixelRatio;
   // Update sizes
-  sizes.width = window.innerWidth * pixelRatio;
-  sizes.height = window.innerHeight * pixelRatio;
+  sizes.width = window.innerWidth;
+  sizes.height = window.innerHeight;
 
   // Update camera
   updateCameraAspect(sizes.width, sizes.height);
 
   // Update renderer
   renderer.setSize(sizes.width, sizes.height);
-  //renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-}
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+});
 
 /**
  * Camera
@@ -301,138 +304,135 @@ const tick = () => {
 function resetScene() {
   configHasChanged = false;
   initNoise();
+  initRenderer();
   particles.init(config, getPointInSphere, colorizer, material, scene);
 }
 
 // Debug
 let gui;
-let perspectiveSizingControl;
 
-function initDatGui() {
-  if (gui !== undefined) {
-    gui.destroy();
-  }
-  gui = new dat.GUI();
-  const noiseFolder = gui.addFolder("Noise");
-  noiseFolder
-    .add(config, "noiseSeed", 0, 1, 0.00001)
-    .listen()
-    .onChange(function (value) {
-      configHasChanged = true;
-    });
-  noiseFolder
-    .add(config, "noiseScale", 0.001, 2.0, 0.001)
-    .onChange(function (value) {
-      configHasChanged = true;
-    });
-  noiseFolder
-    .add(config, "noiseType", ["PERLIN", "SIMPLEX"])
-    .onChange(function (value) {
-      configHasChanged = true;
-    });
-  noiseFolder.add(config, "useFlatCurlNoise");
-  noiseFolder.add(config, "noiseZOffset", -100, 100, 0.01);
-  noiseFolder.add(config, "noiseXOffset", -100, 100, 0.01);
-  noiseFolder.add(config, "noiseYOffset", -100, 100, 0.01);
-  noiseFolder.open();
+if (gui !== undefined) {
+  gui.destroy();
+}
+gui = new dat.GUI();
+const noiseFolder = gui.addFolder("Noise");
+noiseFolder
+  .add(config, "noiseSeed", 0, 1, 0.00001)
+  .listen()
+  .onChange(function (value) {
+    configHasChanged = true;
+  });
+noiseFolder
+  .add(config, "noiseScale", 0.001, 2.0, 0.001)
+  .onChange(function (value) {
+    configHasChanged = true;
+  });
+noiseFolder
+  .add(config, "noiseType", ["PERLIN", "SIMPLEX"])
+  .onChange(function (value) {
+    configHasChanged = true;
+  });
+noiseFolder.add(config, "useFlatCurlNoise");
+noiseFolder.add(config, "noiseZOffset", -100, 100, 0.01);
+noiseFolder.add(config, "noiseXOffset", -100, 100, 0.01);
+noiseFolder.add(config, "noiseYOffset", -100, 100, 0.01);
+noiseFolder.open();
 
-  const systemFolder = gui.addFolder("System");
-  systemFolder
-    .add(config, "numParticles", 1, 100000, 1)
-    .onChange(function (value) {
-      configHasChanged = true;
-    }); //.listen();
-  systemFolder.add(config, "spawnSphereDiameter", 0, 2, 0.1); //.listen();
+const systemFolder = gui.addFolder("System");
+systemFolder
+  .add(config, "numParticles", 1, 100000, 1)
+  .onChange(function (value) {
+    configHasChanged = true;
+  }); //.listen();
+systemFolder.add(config, "spawnSphereDiameter", 0, 2, 0.1); //.listen();
 
-  const colorFolder = gui.addFolder("Color");
-  colorFolder.add(config, "blackbodySaturation", 0, 5, 0.1);
-  colorFolder.add(config, "blackbodyOffset", 0, 5, 0.1);
-  colorFolder.add(config, "blackbodyScale", 0, 5, 0.1);
+const colorFolder = gui.addFolder("Color");
+colorFolder.add(config, "blackbodySaturation", 0, 5, 0.1);
+colorFolder.add(config, "blackbodyOffset", 0, 5, 0.1);
+colorFolder.add(config, "blackbodyScale", 0, 5, 0.1);
 
-  const pointRenderingFolder = gui.addFolder("Point Rendering");
+const pointRenderingFolder = gui.addFolder("Point Rendering");
 
-  pointRenderingFolder
-    .add(config, "sizeBase", 0.001, 1, 0.001)
-    .onChange(setNewSize)
-    .listen();
-  pointRenderingFolder.add(material, "opacity", 0.0025, 1, 0.0005);
-  perspectiveSizingControl = pointRenderingFolder
-    .add(config, "usePerspectiveSizing")
-    .onChange(function (value) {
-      material.size = value
-        ? material.size * perspectiveScalingFactor
-        : material.size / perspectiveScalingFactor;
-    });
+pointRenderingFolder
+  .add(config, "sizeBase", 0.001, 1, 0.001)
+  .onChange(setNewSize)
+  .listen();
+pointRenderingFolder.add(material, "opacity", 0.0025, 1, 0.0005);
+// const perspectiveSizingControl = pointRenderingFolder
+//   .add(config, "usePerspectiveSizing")
+//   .onChange(function (value) {
+//     material.size = value
+//       ? material.size * perspectiveScalingFactor
+//       : material.size / perspectiveScalingFactor;
+//   });
 
-  const particleBehaviorFolder = gui.addFolder("Particle Behavior");
-  particleBehaviorFolder.add(config, "minSpeed", 0.0001, 1, 0.00001);
-  particleBehaviorFolder.add(config, "maxSpeed", 0.0001, 1, 0.00001);
-  particleBehaviorFolder.add(config, "vMin", 0.000001, 0.1, 0.000001);
+const particleBehaviorFolder = gui.addFolder("Particle Behavior");
+particleBehaviorFolder.add(config, "minSpeed", 0.0001, 1, 0.00001);
+particleBehaviorFolder.add(config, "maxSpeed", 0.0001, 1, 0.00001);
+particleBehaviorFolder.add(config, "vMin", 0.000001, 0.1, 0.000001);
 
-  const sineOpacityFolder = gui.addFolder("Sine Opacity");
-  sineOpacityFolder.add(config, "useSineWaveOpacity");
-  sineOpacityFolder.add(config, "sineFrequency", 0.001, 10, 0.001);
-  sineOpacityFolder.add(config, "minSineOpacity", -1, 1, 0.001);
-  sineOpacityFolder.add(config, "maxSineOpacity", 0, 1, 0.001);
+const sineOpacityFolder = gui.addFolder("Sine Opacity");
+sineOpacityFolder.add(config, "useSineWaveOpacity");
+sineOpacityFolder.add(config, "sineFrequency", 0.001, 10, 0.001);
+sineOpacityFolder.add(config, "minSineOpacity", -1, 1, 0.001);
+sineOpacityFolder.add(config, "maxSineOpacity", 0, 1, 0.001);
 
-  const canvasFolder = gui.addFolder("Canvas");
-  canvasFolder.add(config, "customResolution").onChange(function (value) {
+const canvasFolder = gui.addFolder("Canvas");
+canvasFolder.add(config, "customResolution").onChange(function (value) {
+  initRenderer();
+});
+canvasFolder
+  .add(config, "customResolutionX", 0, 4096, 1)
+  .onChange(function (value) {
     initRenderer();
   });
-  canvasFolder
-    .add(config, "customResolutionX", 0, 4096, 1)
-    .onChange(function (value) {
-      initRenderer();
-    });
-  canvasFolder
-    .add(config, "customResolutionY", 0, 4096, 1)
-    .onChange(function (value) {
-      initRenderer();
-    });
+canvasFolder
+  .add(config, "customResolutionY", 0, 4096, 1)
+  .onChange(function (value) {
+    initRenderer();
+  });
 
-  const cameraFolder = gui.addFolder("Camera");
-  cameraFolder
-    .add(config, "cameraDistance", 0, 10, 0.05)
-    .onChange(function (value) {
-      updateCamera();
-    });
+const cameraFolder = gui.addFolder("Camera");
+cameraFolder
+  .add(config, "cameraDistance", 0, 10, 0.05)
+  .onChange(function (value) {
+    updateCamera();
+  });
 
-  const presetFolder = gui.addFolder("Presets");
-  presetFolder
-    .add(configProxy, "preset", presetOptions)
-    .onChange(function (value) {
-      config.set(presets[value]);
-      updateGuiDisplay();
-      renderer.clear();
-      initRenderer();
-      resetScene();
-    });
+const presetFolder = gui.addFolder("Presets");
+presetFolder
+  .add(configProxy, "preset", presetOptions)
+  .onChange(function (value) {
+    config.set(presets[value]);
+    updateGuiDisplay();
+    renderer.clear();
+    resetScene();
+  });
 
-  const buttons = {
-    reset: function () {
-      resetScene();
-    },
-    clearAndReset: function () {
-      renderer.clear();
-      resetScene();
-    },
-    reseed: function () {
-      config.noiseSeed = Math.random();
-    },
-    screenshot: function () {
-      screenshot();
-    },
-  };
-  gui.add(buttons, "reset");
-  gui.add(buttons, "clearAndReset");
-  gui.add(buttons, "reseed");
-  gui.add(buttons, "screenshot");
-}
+const buttons = {
+  reset: function () {
+    resetScene();
+  },
+  clearAndReset: function () {
+    renderer.clear();
+    resetScene();
+  },
+  reseed: function () {
+    config.noiseSeed = Math.random();
+  },
+  screenshot: function () {
+    screenshot();
+  },
+};
+gui.add(buttons, "reset");
+gui.add(buttons, "clearAndReset");
+gui.add(buttons, "reseed");
+gui.add(buttons, "screenshot");
 
 function setNewSize(value) {
-  material.size = perspectiveSizingControl.getValue()
+  material.size = value; /*perspectiveSizingControl.getValue()
     ? value * perspectiveScalingFactor
-    : value;
+    : value;*/
 }
 
 function updateGuiDisplay() {
@@ -444,7 +444,6 @@ function updateGuiDisplay() {
   }
 }
 
-initDatGui();
 tick();
 
 function curl3d(rawX, rawY, rawZ, noiseFunction) {
