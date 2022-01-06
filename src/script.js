@@ -102,17 +102,23 @@ window.addEventListener("resize", () => {
     return;
   }
 
+  setRendererSize();
+});
+
+function setRendererSize() {
+  // const canvas = renderer.domElement;
+  const pixelRatio = window.devicePixelRatio;
   // Update sizes
-  sizes.width = window.innerWidth;
-  sizes.height = window.innerHeight;
+  sizes.width = window.innerWidth * pixelRatio;
+  sizes.height = window.innerHeight * pixelRatio;
 
   // Update camera
   updateCameraAspect(sizes.width, sizes.height);
 
   // Update renderer
   renderer.setSize(sizes.width, sizes.height);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-});
+  //renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+}
 
 /**
  * Camera
