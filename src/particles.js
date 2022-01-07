@@ -72,8 +72,6 @@ export class ParticleSystem {
       new THREE.Float32BufferAttribute(this.velocities, 3)
     );
 
-    console.log(this.geometry);
-
     this.mesh = new THREE.Points(this.geometry, material);
     this.scene.add(this.mesh);
   }

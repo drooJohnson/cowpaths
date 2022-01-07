@@ -6,7 +6,7 @@ import { Noise } from "noisejs";
 import { ParticleSystem } from "./particles";
 import { Config } from "./config";
 import { presets } from "./presets";
-import { BlackbodyColorGenerator } from "./colors";
+import { ColorGenerator, palettes } from "./colors";
 import {
   getPointInSphereUniform,
   getPointInSphereWeighted,
@@ -19,6 +19,7 @@ var config = new Config(presets.default);
 var configProxy = {
   preset: "default",
 };
+
 const presetOptions = Object.keys(presets);
 
 var phi = 0;
@@ -71,11 +72,13 @@ const material = new THREE.PointsMaterial({
   depthTest: config.useDepthTest,
 });
 
-let colorizer = new BlackbodyColorGenerator(
-  config.blackbodySaturation,
-  config.blackbodyOffset,
-  config.blackbodyScale
+let colorizer = new ColorGenerator(
+  config.paletteSaturation,
+  config.paletteOffset,
+  config.paletteScale
 );
+
+var colorConfig = {};
 
 particles.init(config, getPointInSphere, colorizer, material, scene);
 
@@ -170,41 +173,74 @@ controls.enableDamping = true;
 /**
  * Renderer
  */
-let renderer;
+let renderer = new THREE.WebGLRenderer({
+  canvas: canvas,
+  preserveDrawingBuffer: true,
+  antialias: config.useAntialiasing,
+});
+
 function initRenderer() {
-  renderer = new THREE.WebGLRenderer({
-    canvas: canvas,
-    preserveDrawingBuffer: true,
-    antialias: config.useAntialiasing,
-  });
-  if (config.customResolution) {
-    if (config.customResolutionX && config.customResolutionY) {
-      console.log(config.customResolutionX, config.customResolutionY);
-      updateCameraAspect(
-        config.getParam("customResolutionX"),
-        config.getParam("customResolutionY")
-      );
-      canvas.width = config.customResolutionX;
-      canvas.height = config.customResolutionY;
-      let body = document.querySelector("div.sizer");
-      body.style.width = config.customResolutionX + "px";
-      body.style.height = config.customResolutionY + "px";
-      renderer.setSize(config.customResolutionX, config.customResolutionY);
-      console.log(renderer.getSize());
-      console.log(camera);
+  if (rendererNeedsReinit()) {
+    renderer = new THREE.WebGLRenderer({
+      canvas: canvas,
+      preserveDrawingBuffer: true,
+      antialias: config.useAntialiasing,
+    });
+    if (config.customResolution) {
+      if (config.customResolutionX && config.customResolutionY) {
+        updateCameraAspect(
+          config.getParam("customResolutionX"),
+          config.getParam("customResolutionY")
+        );
+        canvas.width = config.customResolutionX;
+        canvas.height = config.customResolutionY;
+        let body = document.querySelector("div.sizer");
+        body.style.width = config.customResolutionX + "px";
+        body.style.height = config.customResolutionY + "px";
+        renderer.setSize(config.customResolutionX, config.customResolutionY);
+      } else {
+        console.log("Please specify custom resolution X and Y");
+      }
     } else {
-      console.log("Please specify custom resolution X and Y");
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      let body = document.querySelector("div.sizer");
+      body.style.width = sizes.width + "px";
+      body.style.height = sizes.height + "px";
+      renderer.setSize(sizes.width, sizes.height);
     }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.autoClearColor = false;
   } else {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    let body = document.querySelector("div.sizer");
-    body.style.width = sizes.width + "px";
-    body.style.height = sizes.height + "px";
-    renderer.setSize(sizes.width, sizes.height);
+    return;
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.autoClearColor = false;
+}
+
+function rendererNeedsReinit() {
+  var currentRendererSize = new THREE.Vector2();
+  renderer.getSize(currentRendererSize);
+
+  if (
+    config.customResolution &&
+    config.customResolutionX &&
+    config.customResolutionY
+  ) {
+    if (
+      currentRendererSize.width !== config.customResolutionX ||
+      currentRendererSize.height !== config.customResolutionY
+    ) {
+      return true;
+    } else {
+      return false;
+    }
+  } else if (
+    currentRendererSize.width !== window.innerWidth ||
+    currentRendererSize.height !== window.innerHeight
+  ) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 initRenderer();
@@ -243,7 +279,6 @@ function screenshot() {
 
   try {
     imgData = renderer.domElement.toDataURL();
-    console.log(imgData);
     var filename = new Date().toISOString() + ".png";
     download(imgData, filename);
   } catch (e) {
@@ -277,20 +312,22 @@ const tick = () => {
   const elapsedTime = clock.getElapsedTime();
 
   // Update objects
-  if (config.useSineWaveOpacity) {
+  if (config.useSineWaveOpacity === true) {
     material.opacity =
       (Math.sin(elapsedTime * config.sineFrequency) * 0.5 + 0.5) *
         (config.maxSineOpacity - config.minSineOpacity) +
       config.minSineOpacity;
+  } else {
+    material.opacity = config.particleOpacity;
   }
 
   particles.update(config.maxSpeed, config.minSpeed, config.vMin, (x, y, z) =>
     curl3d(x, y, z, noiseFunc)
   );
 
-  colorizer.saturation = config.getParam("blackbodySaturation");
-  colorizer.offset = config.getParam("blackbodyOffset");
-  colorizer.scale = config.getParam("blackbodyScale");
+  colorizer.saturation = config.getParam("paletteSaturation");
+  colorizer.offset = config.getParam("paletteOffset");
+  colorizer.scale = config.getParam("paletteScale");
   handleKeys();
   updateCamera();
 
@@ -346,18 +383,40 @@ systemFolder
   }); //.listen();
 systemFolder.add(config, "spawnSphereDiameter", 0, 2, 0.1); //.listen();
 
-const colorFolder = gui.addFolder("Color");
-colorFolder.add(config, "blackbodySaturation", 0, 5, 0.1);
-colorFolder.add(config, "blackbodyOffset", 0, 5, 0.1);
-colorFolder.add(config, "blackbodyScale", 0, 5, 0.1);
+var colorFolder = gui.addFolder("Color");
+
+let saturationController = colorFolder.add(
+  config,
+  "paletteSaturation",
+  0,
+  5,
+  0.1
+);
+let offsetController = colorFolder.add(config, "paletteOffset", 0, 5, 0.1);
+let scaleController = colorFolder.add(config, "paletteScale", 0, 5, 0.1);
+
+colorFolder
+  .add(config, "palette", Object.keys(palettes))
+  .onChange(function (value) {
+    colorizer.switchPalette(value);
+    const newPalette = palettes[value];
+
+    saturationController.setValue(newPalette.saturation);
+    offsetController.setValue(newPalette.offset);
+    scaleController.setValue(newPalette.scale);
+  });
 
 const pointRenderingFolder = gui.addFolder("Point Rendering");
 
 pointRenderingFolder
   .add(config, "sizeBase", 0.001, 1, 0.001)
-  .onChange(setNewSize)
-  .listen();
-pointRenderingFolder.add(material, "opacity", 0.0025, 1, 0.0005);
+  .onChange(setNewSize);
+// .listen();
+pointRenderingFolder
+  .add(config, "particleOpacity", 0.0025, 1, 0.0005)
+  .onChange(function (value) {
+    material.opacity = value;
+  });
 // const perspectiveSizingControl = pointRenderingFolder
 //   .add(config, "usePerspectiveSizing")
 //   .onChange(function (value) {
@@ -403,7 +462,14 @@ const presetFolder = gui.addFolder("Presets");
 presetFolder
   .add(configProxy, "preset", presetOptions)
   .onChange(function (value) {
-    config.set(presets[value]);
+    let {
+      palette,
+      paletteOffset,
+      paletteSaturation,
+      paletteScale,
+      ...settingsToApply
+    } = presets[value];
+    config.set(settingsToApply);
     updateGuiDisplay();
     renderer.clear();
     resetScene();
@@ -442,6 +508,8 @@ function updateGuiDisplay() {
       gui.__folders[key].__controllers[j].updateDisplay();
     }
   }
+  setNewSize(config.sizeBase);
+  material.opacity = config.particleOpacity;
 }
 
 tick();

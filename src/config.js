@@ -1,17 +1,18 @@
 export class Config {
   constructor(configObj) {
+    this.palette = configObj.palette;
     this.numParticles = configObj.numParticles;
     this.vMin = configObj.vMin;
     this.maxSpeed = configObj.maxSpeed;
     this.minSpeed = configObj.minSpeed;
     this.sizeBase = configObj.sizeBase;
     this.useAdditiveBlending = configObj.useAdditiveBlending;
-    this.blackbodySaturation = configObj.blackbodySaturation;
-    this.blackbodyOffset = configObj.blackbodyOffset;
-    this.blackbodyScale = configObj.blackbodyScale;
+    this.paletteSaturation = configObj.paletteSaturation;
+    this.paletteOffset = configObj.paletteOffset;
+    this.paletteScale = configObj.paletteScale;
     this.particleOpacity = configObj.particleOpacity;
     this.useMonochromeParticles = configObj.useMonochromeParticles;
-    this.useBlackbodyColors = configObj.useBlackbodyColors;
+    this.usepaletteColors = configObj.usepaletteColors;
     this.spawnSphereDiameter = configObj.spawnSphereDiameter;
     this.useDepthTest = configObj.useDepthTest;
     this.useAntialiasing = configObj.useAntialiasing;
@@ -36,18 +37,19 @@ export class Config {
 
   get() {
     return {
+      palette: this.palette,
       numParticles: this.numParticles,
       vMin: this.vMin,
       maxSpeed: this.maxSpeed,
       minSpeed: this.minSpeed,
       sizeBase: this.sizeBase,
       useAdditiveBlending: this.useAdditiveBlending,
-      blackbodySaturation: this.blackbodySaturation,
-      blackbodyOffset: this.blackbodyOffset,
-      blackbodyScale: this.blackbodyScale,
+      paletteSaturation: this.paletteSaturation,
+      paletteOffset: this.paletteOffset,
+      paletteScale: this.paletteScale,
       particleOpacity: this.particleOpacity,
       useMonochromeParticles: this.useMonochromeParticles,
-      useBlackbodyColors: this.useBlackbodyColors,
+      usepaletteColors: this.usepaletteColors,
       spawnSphereDiameter: this.spawnSphereDiameter,
       useDepthTest: this.useDepthTest,
       useAntialiasing: this.useAntialiasing,
@@ -72,6 +74,7 @@ export class Config {
   }
 
   set(configObj) {
+    this.palette = configObj.palette ?? this.palette;
     this.numParticles = configObj.numParticles ?? this.numParticles;
     this.vMin = configObj.vMin ?? this.vMin;
     this.maxSpeed = configObj.maxSpeed ?? this.maxSpeed;
@@ -79,15 +82,14 @@ export class Config {
     this.sizeBase = configObj.sizeBase ?? this.sizeBase;
     this.useAdditiveBlending =
       configObj.useAdditiveBlending ?? this.useAdditiveBlending;
-    this.blackbodySaturation =
-      configObj.blackbodySaturation ?? this.blackbodySaturation;
-    this.blackbodyOffset = configObj.blackbodyOffset ?? this.blackbodyOffset;
-    this.blackbodyScale = configObj.blackbodyScale ?? this.blackbodyScale;
+    this.paletteSaturation =
+      configObj.paletteSaturation ?? this.paletteSaturation;
+    this.paletteOffset = configObj.paletteOffset ?? this.paletteOffset;
+    this.paletteScale = configObj.paletteScale ?? this.paletteScale;
     this.particleOpacity = configObj.particleOpacity ?? this.particleOpacity;
     this.useMonochromeParticles =
       configObj.useMonochromeParticles ?? this.useMonochromeParticles;
-    this.useBlackbodyColors =
-      configObj.useBlackbodyColors ?? this.useBlackbodyColors;
+    this.usepaletteColors = configObj.usepaletteColors ?? this.usepaletteColors;
     this.spawnSphereDiameter =
       configObj.spawnSphereDiameter ?? this.spawnSphereDiameter;
     this.useDepthTest = configObj.useDepthTest ?? this.useDepthTest;
