@@ -2,7 +2,8 @@ import "./style.css";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as dat from "dat.gui";
-import { Noise } from "noisejs";
+import HaltingNoiseGenerator from "./haltingNoise";
+import CurlNoiseGenerator from "./curlNoise";
 import { ParticleSystem } from "./particles";
 import { Config } from "./config";
 import { presets } from "./presets";
@@ -29,18 +30,28 @@ var easingTheta = 0;
 
 var configHasChanged = false;
 //const perspectiveScalingFactor = 1.125;
+const NOISE_TYPE_TRUE_CURL = "TRUE_CURL";
+const NOISE_TYPE_HALTING_CURL = "HALTING_CURL";
+export { NOISE_TYPE_TRUE_CURL, NOISE_TYPE_HALTING_CURL };
+//export type NoiseType = "TRUE_CURL" | 'HALTING_CURL';
 
 // Init Noise
-let noise;
+let noise;// = new NoiseGenerator(config.noiseSeed);
 let noiseFunc;
 let currNoiseScale;
 function initNoise() {
-  let { noiseType, noiseScale, noiseSeed } = config.get();
-  noise = new Noise(noiseSeed);
-  noiseFunc =
-    noiseType === "SIMPLEX"
-      ? (x, y, z) => noise.simplex3(x, y, z)
-      : (x, y, z) => noise.perlin3(x, y, z);
+  let { noiseType, noiseScale, noiseSeed, noiseXOffset, noiseYOffset, noiseZOffset } = config.get();
+
+  if (noiseType === NOISE_TYPE_TRUE_CURL) {
+    noise = new CurlNoiseGenerator(noiseSeed, new THREE.Vector3(noiseXOffset, noiseYOffset, noiseZOffset));
+  } else {
+    noise = new HaltingNoiseGenerator(noiseSeed, new THREE.Vector3(noiseXOffset, noiseYOffset, noiseZOffset));
+  }
+  // noiseFunc = (x, y, z) => noise.curl3d(x, y, z);
+  // noiseFunc =
+  //   noiseType === "SIMPLEX"
+  //     ? (x, y, z) => noise.simplex3(x, y, z) // (x, y, z) => noise.simplex3(x, y, z)
+  //     : (x, y, z) => noise.perlin3(x, y, z);
   currNoiseScale = noiseScale;
 }
 
@@ -51,7 +62,7 @@ const getPointInSphere = config.getParam("useWeightedSphereSampling")
   : getPointInSphereUniform;
 
 // Canvas
-const canvas = document.querySelector("canvas.webgl");
+const canvas = document.querySelector("canvas.webgl") as HTMLCanvasElement;
 
 // Scene
 const scene = new THREE.Scene();
@@ -194,7 +205,7 @@ function initRenderer() {
         );
         canvas.width = config.customResolutionX;
         canvas.height = config.customResolutionY;
-        let body = document.querySelector("div.sizer");
+        let body = document.querySelector("div.sizer") as HTMLElement;
         body.style.width = config.customResolutionX + "px";
         body.style.height = config.customResolutionY + "px";
         renderer.setSize(config.customResolutionX, config.customResolutionY);
@@ -204,7 +215,7 @@ function initRenderer() {
     } else {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      let body = document.querySelector("div.sizer");
+      let body = document.querySelector("div.sizer") as HTMLElement;
       body.style.width = sizes.width + "px";
       body.style.height = sizes.height + "px";
       renderer.setSize(sizes.width, sizes.height);
@@ -321,9 +332,7 @@ const tick = () => {
     material.opacity = config.particleOpacity;
   }
 
-  particles.update(config.maxSpeed, config.minSpeed, config.vMin, (x, y, z) =>
-    curl3d(x, y, z, noiseFunc)
-  );
+  particles.update(config.maxSpeed, config.minSpeed, config.vMin, noise.curl3d);
 
   colorizer.saturation = config.getParam("paletteSaturation");
   colorizer.offset = config.getParam("paletteOffset");
@@ -364,8 +373,9 @@ noiseFolder
   .onChange(function (value) {
     configHasChanged = true;
   });
+console.log(config);
 noiseFolder
-  .add(config, "noiseType", ["PERLIN", "SIMPLEX"])
+  .add(config, "noiseType", [NOISE_TYPE_HALTING_CURL, NOISE_TYPE_TRUE_CURL])
   .onChange(function (value) {
     configHasChanged = true;
   });
@@ -388,12 +398,12 @@ var colorFolder = gui.addFolder("Color");
 let saturationController = colorFolder.add(
   config,
   "paletteSaturation",
-  0,
+  -5,
   5,
   0.1
 );
-let offsetController = colorFolder.add(config, "paletteOffset", 0, 5, 0.1);
-let scaleController = colorFolder.add(config, "paletteScale", 0, 5, 0.1);
+let offsetController = colorFolder.add(config, "paletteOffset", -5, 5, 0.1);
+let scaleController = colorFolder.add(config, "paletteScale", -5, 5, 0.1);
 
 colorFolder
   .add(config, "palette", Object.keys(palettes))
@@ -484,7 +494,9 @@ const buttons = {
     resetScene();
   },
   reseed: function () {
-    config.noiseSeed = Math.random();
+    let newSeed = Math.random();
+    config.noiseSeed = newSeed;
+    //noise.setSeed(newSeed);
   },
   screenshot: function () {
     screenshot();
@@ -513,6 +525,7 @@ function updateGuiDisplay() {
 }
 
 tick();
+
 
 function curl3d(rawX, rawY, rawZ, noiseFunction) {
   var eps = 0.0001;
