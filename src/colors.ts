@@ -1,5 +1,7 @@
 import * as THREE from "three";
 
+
+
 export const palettes = {
   default: {
     a: [0.5, 0.5, 0.5],
@@ -73,42 +75,51 @@ export const palettes = {
   },
 };
 export class ColorGenerator {
-  constructor(saturation, offset, scale, palette = "default") {
+  saturation: number;
+  offset: number;
+  scale: number;
+  paletteName: string;
+  a: number[];
+  b: number[];
+  c: number[];
+  d: number[];
+
+  constructor(saturation, offset, scale, paletteName = "default") {
     this.saturation = saturation;
     this.offset = offset;
     this.scale = scale;
-    this.palette = palette;
-    this.a = palettes[palette].a;
-    this.b = palettes[palette].b;
-    this.c = palettes[palette].c;
-    this.d = palettes[palette].d;
+    this.paletteName = paletteName;
+    this.a = palettes[paletteName].a;
+    this.b = palettes[paletteName].b;
+    this.c = palettes[paletteName].c;
+    this.d = palettes[paletteName].d;
   }
 
-  switchPalette(palette) {
-    this.palette = palette;
-    this.a = palettes[palette].a;
-    this.b = palettes[palette].b;
-    this.c = palettes[palette].c;
-    this.d = palettes[palette].d;
+  switchPalette = (paletteName) => {
+    this.paletteName = paletteName;
+    this.a = palettes[paletteName].a;
+    this.b = palettes[paletteName].b;
+    this.c = palettes[paletteName].c;
+    this.d = palettes[paletteName].d;
   }
 
-  getColor(
-    t,
+  getColor = (
+    t:number,
     saturation = this.saturation,
     offset = this.offset,
     scale = this.scale,
-    palette
-  ) {
+    paletteName = undefined
+  ) => {
     let rangeOffset = saturation * 0.1;
     t /= 2;
     t *= scale;
     t += offset;
 
-    if (palette && palettes[palette]) {
-      this.a = palettes[palette].a;
-      this.b = palettes[palette].b;
-      this.c = palettes[palette].c;
-      this.d = palettes[palette].d;
+    if (paletteName && palettes[paletteName]) {
+      this.a = palettes[paletteName].a;
+      this.b = palettes[paletteName].b;
+      this.c = palettes[paletteName].c;
+      this.d = palettes[paletteName].d;
     }
 
     const d = [
