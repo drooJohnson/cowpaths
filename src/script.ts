@@ -28,38 +28,74 @@ var easingPhi = 0;
 var theta = 0;
 var easingTheta = 0;
 
-var configHasChanged = false;
-//const perspectiveScalingFactor = 1.125;
-const NOISE_TYPE_TRUE_CURL = "TRUE_CURL";
-const NOISE_TYPE_HALTING_CURL = "HALTING_CURL";
-export { NOISE_TYPE_TRUE_CURL, NOISE_TYPE_HALTING_CURL };
-//export type NoiseType = "TRUE_CURL" | 'HALTING_CURL';
+export type NoiseTypes = "TRUE_CURL" | "APPROXIMATE_CURL" 
+
+interface INoiseType {
+  [key: string]: NoiseTypes;
+}
+export const value = "VALUE"
+
+export const NoiseType:INoiseType = {
+  TRUE_CURL: "TRUE_CURL", // true divergence-free curl noise. Does not work well with MIN_VELOCITY since true curl noise doesn't really slow down.
+  APPROXIMATE_CURL: "APPROXIMATE_CURL", // approximate curl noise, can give more artistically interesting results.
+}
+
+export type ExtinctionMethods = "AGE" | "MIN_VELOCITY_PER_AXIS" | "MIN_SOFT_VELOCITY_PER_AXIS" | "MIN_VELOCITY" | "DISTANCE_FROM_CENTER"
+
+interface IExtinctionMethod {
+  [key: string]: ExtinctionMethods;
+}
+
+export const ExtinctionMethod:IExtinctionMethod = {
+  AGE: "AGE", // lifespan is set for particles on init, and decremented each frame. Once it reaches 0, the particle is removed
+  MIN_VELOCITY_PER_AXIS: "MIN_VELOCITY_PER_AXIS", // approximates by testing absolute value of each axis of velocity, if ALL are below a threshold, then particle is dead
+  MIN_SOFT_VELOCITY_PER_AXIS: "MIN_SOFT_VELOCITY_PER_AXIS", // approximates by testing each axis of velocity, if ALL are below a threshold, then particle is dead
+  MIN_VELOCITY: "MIN_VELOCITY", // gets actual length of velocity vector (expensive) and compares to threshold
+  DISTANCE_FROM_CENTER: "DISTANCE_FROM_CENTER", // gets distance from center of particle system, and compares to threshold
+}
 
 // Init Noise
-let noise;// = new NoiseGenerator(config.noiseSeed);
+
+let noise;
 let noiseFunc;
 let currNoiseScale;
 function initNoise() {
-  let { noiseType, noiseScale, noiseSeed, noiseXOffset, noiseYOffset, noiseZOffset } = config.get();
+  let {
+    noiseType,
+    noiseScale,
+    noiseSeed,
+    noiseXOffset,
+    noiseYOffset,
+    noiseZOffset,
+  } = config.get();
 
-  if (noiseType === NOISE_TYPE_TRUE_CURL) {
-    noise = new CurlNoiseGenerator(noiseSeed, new THREE.Vector3(noiseXOffset, noiseYOffset, noiseZOffset));
-  } else {
-    noise = new HaltingNoiseGenerator(noiseSeed, new THREE.Vector3(noiseXOffset, noiseYOffset, noiseZOffset));
+  switch(noiseType){
+    case NoiseType.TRUE_CURL:
+      noise = new CurlNoiseGenerator(
+        noiseSeed,
+        noiseXOffset,
+        noiseYOffset,
+        noiseZOffset
+      );
+      noiseFunc = noise.curl3d;
+      break;
+    case NoiseType.APPROXIMATE_CURL:
+      // allow fallthrough to default
+    default:
+      noise = new HaltingNoiseGenerator(
+        noiseSeed,
+        noiseXOffset,
+        noiseYOffset,
+        noiseZOffset
+      );
+      noiseFunc = noise.curl3d;
   }
-  // noiseFunc = (x, y, z) => noise.curl3d(x, y, z);
-  // noiseFunc =
-  //   noiseType === "SIMPLEX"
-  //     ? (x, y, z) => noise.simplex3(x, y, z) // (x, y, z) => noise.simplex3(x, y, z)
-  //     : (x, y, z) => noise.perlin3(x, y, z);
   currNoiseScale = noiseScale;
 }
 
 initNoise();
 
-const getPointInSphere = config.getParam("useWeightedSphereSampling")
-  ? getPointInSphereWeighted
-  : getPointInSphereUniform;
+const getPointInSphere = getPointInSphereWeighted;
 
 // Canvas
 const canvas = document.querySelector("canvas.webgl") as HTMLCanvasElement;
@@ -70,17 +106,15 @@ const scene = new THREE.Scene();
 const particles = new ParticleSystem(config.getParam("numParticles"));
 
 const material = new THREE.PointsMaterial({
-  size: /*config.usePerspectiveSizing
-    ? config.sizeBase * perspectiveScalingFactor
-    :*/ config.sizeBase,
+  size: config.sizeBase,
   vertexColors: true,
-  sizeAttenuation: false, //config.usePerspectiveSizing,
+  sizeAttenuation: false,
   opacity: config.particleOpacity * (config.useAdditiveBlending ? 1 : 2),
   blending: config.useAdditiveBlending
     ? THREE.AdditiveBlending
     : THREE.NormalBlending,
   transparent: true,
-  depthTest: config.useDepthTest,
+  depthTest: true,
 });
 
 let colorizer = new ColorGenerator(
@@ -88,8 +122,6 @@ let colorizer = new ColorGenerator(
   config.paletteOffset,
   config.paletteScale
 );
-
-var colorConfig = {};
 
 particles.init(config, getPointInSphere, colorizer, material, scene);
 
@@ -122,7 +154,7 @@ window.addEventListener("resize", () => {
     window.innerWidth === windowWidth &&
     window.innerHeight === windowHeight
   ) {
-    alert("Aborted resize");
+    console.log("Aborted resize");
   }
 
   // Update sizes
@@ -187,7 +219,7 @@ controls.enableDamping = true;
 let renderer = new THREE.WebGLRenderer({
   canvas: canvas,
   preserveDrawingBuffer: true,
-  antialias: config.useAntialiasing,
+  antialias: true,
 });
 
 function initRenderer() {
@@ -195,7 +227,7 @@ function initRenderer() {
     renderer = new THREE.WebGLRenderer({
       canvas: canvas,
       preserveDrawingBuffer: true,
-      antialias: config.useAntialiasing,
+      antialias: true,
     });
     if (config.customResolution) {
       if (config.customResolutionX && config.customResolutionY) {
@@ -332,7 +364,7 @@ const tick = () => {
     material.opacity = config.particleOpacity;
   }
 
-  particles.update(config.maxSpeed, config.minSpeed, config.vMin, noise.curl3d);
+  particles.update(config.maxSpeed, config.minSpeed, config.vMin, noiseFunc);
 
   colorizer.saturation = config.getParam("paletteSaturation");
   colorizer.offset = config.getParam("paletteOffset");
@@ -348,7 +380,6 @@ const tick = () => {
 };
 
 function resetScene() {
-  configHasChanged = false;
   initNoise();
   initRenderer();
   particles.init(config, getPointInSphere, colorizer, material, scene);
@@ -365,21 +396,14 @@ const noiseFolder = gui.addFolder("Noise");
 noiseFolder
   .add(config, "noiseSeed", 0, 1, 0.00001)
   .listen()
-  .onChange(function (value) {
-    configHasChanged = true;
-  });
 noiseFolder
   .add(config, "noiseScale", 0.001, 2.0, 0.001)
-  .onChange(function (value) {
-    configHasChanged = true;
-  });
 console.log(config);
 noiseFolder
-  .add(config, "noiseType", [NOISE_TYPE_HALTING_CURL, NOISE_TYPE_TRUE_CURL])
+  .add(config, "noiseType", [NoiseType.APPROXIMATE_CURL, NoiseType.TRUE_CURL])
   .onChange(function (value) {
-    configHasChanged = true;
+    particles.noiseType = value;
   });
-noiseFolder.add(config, "useFlatCurlNoise");
 noiseFolder.add(config, "noiseZOffset", -100, 100, 0.01);
 noiseFolder.add(config, "noiseXOffset", -100, 100, 0.01);
 noiseFolder.add(config, "noiseYOffset", -100, 100, 0.01);
@@ -387,11 +411,8 @@ noiseFolder.open();
 
 const systemFolder = gui.addFolder("System");
 systemFolder
-  .add(config, "numParticles", 1, 100000, 1)
-  .onChange(function (value) {
-    configHasChanged = true;
-  }); //.listen();
-systemFolder.add(config, "spawnSphereDiameter", 0, 2, 0.1); //.listen();
+  .add(config, "numParticles", 1, 100000, 1);
+systemFolder.add(config, "spawnSphereDiameter", 0, 2, 0.1);
 
 var colorFolder = gui.addFolder("Color");
 
@@ -415,30 +436,31 @@ colorFolder
     offsetController.setValue(newPalette.offset);
     scaleController.setValue(newPalette.scale);
   });
+colorFolder.add(config, "useAdditiveBlending").onChange(function(value) {
+  material.blending = value ? THREE.AdditiveBlending : THREE.NormalBlending;
+})
 
 const pointRenderingFolder = gui.addFolder("Point Rendering");
 
 pointRenderingFolder
-  .add(config, "sizeBase", 0.001, 1, 0.001)
+  .add(config, "sizeBase", 0.001, 2, 0.001)
   .onChange(setNewSize);
-// .listen();
 pointRenderingFolder
-  .add(config, "particleOpacity", 0.0025, 1, 0.0005)
+  .add(config, "particleOpacity", 0.0025, 2, 0.0005)
   .onChange(function (value) {
     material.opacity = value;
   });
-// const perspectiveSizingControl = pointRenderingFolder
-//   .add(config, "usePerspectiveSizing")
-//   .onChange(function (value) {
-//     material.size = value
-//       ? material.size * perspectiveScalingFactor
-//       : material.size / perspectiveScalingFactor;
-//   });
 
 const particleBehaviorFolder = gui.addFolder("Particle Behavior");
 particleBehaviorFolder.add(config, "minSpeed", 0.0001, 1, 0.00001);
 particleBehaviorFolder.add(config, "maxSpeed", 0.0001, 1, 0.00001);
-particleBehaviorFolder.add(config, "vMin", 0.000001, 0.1, 0.000001);
+
+const extinctionFolder = gui.addFolder("Extinction");
+extinctionFolder.add(config, "extinctionMethod", Object.values(ExtinctionMethod)).onChange((value) => {particles.extinctionMethod = value});
+extinctionFolder.add(config, "lifeSpanMin", 0.0, 10000, 1).onChange((value) => {particles.lifeSpanMin = value});
+extinctionFolder.add(config, "lifeSpanMax", 0.0, 10000, 1).onChange((value) => {particles.lifeSpanMax = value});
+extinctionFolder.add(config, "extinctionDistance", 0.0, 10000, 1).onChange((value) => {particles.extinctionDistance = value});
+extinctionFolder.add(config, "vMin", 0.000001, 1.0, 0.000001).onChange((value) => {particles.vMin = value});
 
 const sineOpacityFolder = gui.addFolder("Sine Opacity");
 sineOpacityFolder.add(config, "useSineWaveOpacity");
@@ -526,42 +548,39 @@ function updateGuiDisplay() {
 
 tick();
 
-
-function curl3d(rawX, rawY, rawZ, noiseFunction) {
-  var eps = 0.0001;
-  var curl = new THREE.Vector3();
+function curl3d(rawX, rawY, rawZ) {
+  let eps = 0.0001;
+  let curl = new THREE.Vector3();
 
   const x = rawX * currNoiseScale;
   const y = rawY * currNoiseScale;
-  const z = config.useFlatCurlNoise
-    ? rawX * currNoiseScale
-    : rawZ * currNoiseScale;
+  const z = rawZ * currNoiseScale;
 
-  var n1 = noiseFunction(x + config.noiseXOffset, y + eps, z);
-  var n2 = noiseFunction(x + config.noiseXOffset, y - eps, z);
+  let n1 = noise.simplex3(x + config.noiseXOffset, y + eps, z);
+  let n2 = noise.simplex3(x + config.noiseXOffset, y - eps, z);
   // Average to find approximate derivative
-  var a = (n1 - n2) / (2 * eps);
-  var n1 = noiseFunction(x + config.noiseXOffset, y, z + eps);
-  var n2 = noiseFunction(x + config.noiseXOffset, y, z - eps);
+  let a = (n1 - n2) / (2 * eps);
+  n1 = noise.simplex3(x + config.noiseXOffset, y, z + eps);
+  n2 = noise.simplex3(x + config.noiseXOffset, y, z - eps);
   // Average to find approximate derivative
-  var b = (n1 - n2) / (2 * eps);
+  let b = (n1 - n2) / (2 * eps);
   curl.x = a - b;
 
   //Find rate of change in XZ plane
-  n1 = noiseFunction(x, y + config.noiseYOffset, z + eps);
-  n2 = noiseFunction(x, y + config.noiseYOffset, z - eps);
+  n1 = noise.simplex3(x, y + config.noiseYOffset, z + eps);
+  n2 = noise.simplex3(x, y + config.noiseYOffset, z - eps);
   a = (n1 - n2) / (2 * eps);
-  n1 = noiseFunction(x + eps, y + config.noiseYOffset, z);
-  n2 = noiseFunction(x - eps, y + config.noiseYOffset, z);
+  n1 = noise.simplex3(x + eps, y + config.noiseYOffset, z);
+  n2 = noise.simplex3(x - eps, y + config.noiseYOffset, z);
   b = (n1 - n2) / (2 * eps);
   curl.y = a - b;
 
   //Find rate of change in XY plane
-  n1 = noiseFunction(x + eps, y, z + config.noiseZOffset);
-  n2 = noiseFunction(x - eps, y, z + config.noiseZOffset);
+  n1 = noise.simplex3(x + eps, y, z + config.noiseZOffset);
+  n2 = noise.simplex3(x - eps, y, z + config.noiseZOffset);
   a = (n1 - n2) / (2 * eps);
-  n1 = noiseFunction(x, y + eps, z + config.noiseZOffset);
-  n2 = noiseFunction(x, y - eps, z + config.noiseZOffset);
+  n1 = noise.simplex3(x, y + eps, z + config.noiseZOffset);
+  n2 = noise.simplex3(x, y - eps, z + config.noiseZOffset);
   b = (n1 - n2) / (2 * eps);
   curl.z = a - b;
 

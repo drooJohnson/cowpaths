@@ -6,6 +6,9 @@
     "build-pages": "webpack --config ./bundler/webpack.pages.js",
     "dev": "webpack serve --config ./bundler/webpack.dev.js"
   },
+  "babel":{
+    "plugins":["@babel/plugin-proposal-class-properties"]
+  },
   "dependencies": {
     "@babel/core": "^7.13.1",
     "@babel/preset-env": "^7.13.5",
@@ -29,6 +32,8 @@
     "webpack-merge": "^5.7.3"
   },
   "devDependencies": {
+    "@babel/plugin-proposal-class-properties": "^7.16.7",
+    "@babel/plugin-syntax-class-properties": "^7.12.13",
     "@types/dat.gui": "^0.7.7",
     "@types/three": "^0.136.1",
     "ts-loader": "^9.2.6",

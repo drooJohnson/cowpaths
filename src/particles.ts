@@ -1,12 +1,7 @@
 import * as THREE from "three";
 import { ColorGenerator } from "./colors";
 import { Config } from './config';
-
-export enum DeletionMethod {
-  MINIMUM_VELOCITY,
-  AGE,
-  DISTANCE_FROM_CENTER,
-}
+import { NoiseTypes, NoiseType, ExtinctionMethods, ExtinctionMethod } from './script';
 
 export class ParticleSystem {
   positions: Float32Array;
@@ -24,9 +19,33 @@ export class ParticleSystem {
   spawnDiameter: number;
   spawnSampler: (diameter: number) => THREE.Vector3;
   life: number[];
-  lifeSpan: number;
-  deletionMethod: DeletionMethod;
-  lifeRange: number[];
+  lifeSpanMax: number;
+  lifeSpanMin: number;
+
+  set extinctionMethod(method:ExtinctionMethods){
+    switch(method) {
+      case ExtinctionMethod.MIN_VELOCITY:
+        this.extinctionTestFunction = this.killParticleByVelocity
+        break;
+      case ExtinctionMethod.MIN_VELOCITY_PER_AXIS:
+        this.extinctionTestFunction = this.killParticleByVelocityPerAxis
+        break;
+      case ExtinctionMethod.MIN_SOFT_VELOCITY_PER_AXIS:
+        this.extinctionTestFunction = this.killParticleBySoftVelocityPerAxis
+        break;
+      case ExtinctionMethod.AGE:
+        this.extinctionTestFunction = this.killParticleByAge
+        break;
+      case ExtinctionMethod.DISTANCE_FROM_CENTER:
+        this.extinctionTestFunction = this.killParticleByDistance
+        break;
+    }
+  }
+
+  extinctionDistance: number;
+  extinctionTestFunction: (i:number) => boolean;
+  vMin: number;
+  noiseType: NoiseTypes;
 
   constructor(numParticles) {
     this.positions = new Float32Array(numParticles * 3);
@@ -40,6 +59,7 @@ export class ParticleSystem {
     this.mesh;
     this.scene;
     this.config;
+    this.noiseType = NoiseType.APPROXIMATE_CURL;
   }
 
   init(config, spawnSampler, colorizer, material, scene) {
@@ -59,9 +79,13 @@ export class ParticleSystem {
     this.velocities = new Float32Array(this.numParticles * 3);
     this.speeds = new Float32Array(this.numParticles);
     this.life = [];
-    this.lifeSpan = 1; // How many ticks a particle can survive beneath the vMin
-    this.deletionMethod = DeletionMethod.MINIMUM_VELOCITY;
-    this.lifeRange = [500, 100];
+    this.lifeSpanMin = config.lifeSpanMin || 100;
+    this.lifeSpanMax = config.lifeSpanMax || 500;
+    this.extinctionMethod = config.extinctionMethod || ExtinctionMethod.MIN_SOFT_VELOCITY_PER_AXIS;
+    this.extinctionDistance = config.extinctionDistance || 100;
+    this.extinctionTestFunction;
+    this.vMin = config.vMin || 0.1;
+    this.noiseType = config.noiseType;
 
     for (let i = 0; i < this.numParticles; i++) {
       let x = i * 3;
@@ -92,14 +116,34 @@ export class ParticleSystem {
       this.velocities[y] = Math.random() * 0.5 + 0.5;
       this.velocities[z] = Math.random() * 0.5 + 0.5;
 
-      this.speeds[i] = Math.random();
-      // this.life[i] =
-      //   Math.random() * (this.lifeRange[1] - this.lifeRange[0]) +
-      //   this.lifeRange[0];
-      this.life[i] = this.lifeSpan;
+      // This -1 to 1 is later rescaled to the range of minSpeed to maxSpeed;
+      this.speeds[i] = Math.random(); 
+
+      // Life is decremented each tick, and when it reaches 0, the particle will be deleted if
+      // the extinction method is set to AGE.
+      this.life[i] =
+        Math.random() * (this.lifeSpanMax - this.lifeSpanMin) +
+        this.lifeSpanMin;
+      
+      switch(this.extinctionMethod) {
+        case ExtinctionMethod.MIN_VELOCITY:
+          this.extinctionTestFunction = this.killParticleByVelocity
+          break;
+        case ExtinctionMethod.MIN_VELOCITY_PER_AXIS:
+          this.extinctionTestFunction = this.killParticleByVelocityPerAxis
+          break;
+        case ExtinctionMethod.MIN_SOFT_VELOCITY_PER_AXIS:
+          this.extinctionTestFunction = this.killParticleBySoftVelocityPerAxis
+          break;
+        case ExtinctionMethod.AGE:
+          this.extinctionTestFunction = this.killParticleByAge
+          break;
+        case ExtinctionMethod.DISTANCE_FROM_CENTER:
+          this.extinctionTestFunction = this.killParticleByDistance
+          break;
+      }
     }
 
-    console.log(this.positions);
 
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute(
@@ -118,30 +162,109 @@ export class ParticleSystem {
     this.mesh = new THREE.Points(this.geometry, material);
     this.scene.add(this.mesh);
 
-    console.log(this.mesh.geometry.attributes.position.array);
   }
 
-  update(maxSpeed, minSpeed, vMin, noiseSampler) {
+  killParticleByAge = (i:number):boolean => {
+    if (this.life[i] <= 0) {
+      return true;
+    }
+    return false;
+  }
+
+  killParticleByDistance = (i:number):boolean => {
+    let p = this.mesh.geometry.attributes.position;
+
+    let x = p.getX(i)
+    let y = p.getY(i)
+    let z = p.getZ(i)
+
+    let position = new THREE.Vector3(
+      x,y,z
+    );
+
+    if (position.length() > this.extinctionDistance) {
+      return true;
+    }
+    return false;
+  }
+
+  killParticleByVelocity = (i:number):boolean => {
+    let v = this.mesh.geometry.attributes.velocity;
+
+    let x = v.getX(i)
+    let y = v.getY(i)
+    let z = v.getZ(i)
+
+    let velocity = new THREE.Vector3(
+      x,y,z
+    );
+
+    if (velocity.length() < this.vMin) {
+      return true;
+    }
+    return false;
+  }
+
+  killParticleBySoftVelocityPerAxis = (i:number):boolean => {
+
+    let v = this.mesh.geometry.attributes.velocity;
+
+    let x = v.getX(i)
+    let y = v.getY(i)
+    let z = v.getZ(i)
+
+    let velocity = new THREE.Vector3(
+      x,y,z
+    );
+
+    if (velocity.x < this.vMin && velocity.y < this.vMin && velocity.z < this.vMin) {
+      return true;
+    }
+    return false;
+  }
+
+  killParticleByVelocityPerAxis = (i:number):boolean => {
+
+    let v = this.mesh.geometry.attributes.velocity;
+
+
+    // PREVIOUSLY THIS FUNCTION DIDN'T GET ABSOLUTE VALUES AND
+    // WHILE THE RESULTS LOOKED COOL IT WAS COMPLETELY WRONG.
+    let x = Math.abs(v.getX(i))
+    let y = Math.abs(v.getY(i))
+    let z = Math.abs(v.getZ(i))
+
+    let velocity = new THREE.Vector3(
+      x,y,z
+    );
+
+    if (velocity.x < this.vMin && velocity.y < this.vMin && velocity.z < this.vMin) {
+      return true;
+    }
+    return false;
+  }
+
+  update(maxSpeed, minSpeed, vMin, noiseSampler: (x,y,z) => THREE.Vector3) {
     let p = this.mesh.geometry.attributes.position//.array;
     let v = this.mesh.geometry.attributes.velocity//.array;
     let c = this.mesh.geometry.attributes.color//.array;
     let index = 0;
 
+    //var extinctionCount = 0;
+
     for (let i = 0; i < this.numParticles; i++) {
-      if (this.life[i] <= 0) {
-        this.respawnParticle(i, c, p, v);
-      } else {
-        //this.life[i] -= 1;
 
-        // if (this.life[i] <= 0) {
-        //   // if (v[x] < vMin && v[y] < vMin && v[z] < vMin) {
-        //   this.respawnParticle(i, c, p, v);
-        // } else {
+      // Each update, we decrement the life of each particle,
+      // then find its velocity, and its distance from the center.
 
+      // Once we have this data, we test to see if the particle should be deleted
+      // by passing it to the extinctionTestFunc which returns true/false.
+      // if it is true, we delete the particle and respawn it.
+      
+        this.life[i] -= 1;
         let px = p.getX(i);
         let py = p.getY(i);
         let pz = p.getZ(i);
-
 
         let pt = noiseSampler(px, py, pz);
         let speed = this.speeds[i] * (maxSpeed - minSpeed) + minSpeed;
@@ -151,28 +274,20 @@ export class ParticleSystem {
         let vz =  pt.z * speed;
 
         v.setXYZ(i, vx, vy, vz);
-
-        let vLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
-
-        if (vLen < vMin) {
-          this.life[i] -= 1;
-          c.setZ(i, this.life[i] / this.lifeSpan);
-          c.setW(i, this.life[i] / this.lifeSpan);
+        if (this.extinctionTestFunction(i)) {
+          //extinctionCount++;
+          this.respawnParticle(i, c, p, v);
+        } else {
+          p.setXYZ(i, px + vx, py + vy, pz + vz);
         }
-
-        p.setXYZ(i, px + vx, py + vy, pz + vz);
-        // p[x] = p[x] + v[x];
-        // p[y] = p[y] + v[y];
-        // p[z] = p[z] + v[z];
-        // }
       }
-    }
     this.mesh.geometry.attributes.position.needsUpdate = true;
     this.mesh.geometry.attributes.velocity.needsUpdate = true;
     this.mesh.geometry.attributes.color.needsUpdate = true;
+    //console.log("Extinction count: " + extinctionCount);
   }
 
-  respawnParticle(
+  respawnParticle (
     index,
     colorBuffer,
     positionBuffer,
@@ -189,10 +304,9 @@ export class ParticleSystem {
     positionBuffer.setXYZ(index, position.x, position.y, position.z);
 
     this.speeds[index] = Math.random();
-    this.life[index] = this.lifeSpan;
-    //this.life[index] =
-    //  Math.random() * (this.lifeRange[1] - this.lifeRange[0]) +
-    //  this.lifeRange[0];
+    this.life[index] =
+     Math.random() * (this.lifeSpanMax - this.lifeSpanMin) +
+     this.lifeSpanMin;
 
     this.mesh.geometry.attributes.color.needsUpdate = true;
   }

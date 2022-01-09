@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-  var grad3 = [
+  var grad3:Array<Array<number>> = [
     [1, 1, 0],
     [-1, 1, 0],
     [1, -1, 0],
@@ -15,7 +15,7 @@ import * as THREE from "three";
     [0, -1, -1],
   ];
 
-  var grad4 = [
+  var grad4:Array<Array<number>> = [
     [0, 1, 1, 1],
     [0, 1, 1, -1],
     [0, 1, -1, 1],
@@ -52,7 +52,7 @@ import * as THREE from "three";
 
   // A lookup table to traverse the simplex around a given point in 4D.
   // Details can be found where this table is used, in the 4D noise method.
-  var simplex = [
+  var simplex:Array<Array<number>> = [
     [0, 1, 2, 3],
     [0, 1, 3, 2],
     [0, 0, 0, 0],
@@ -135,14 +135,20 @@ import * as THREE from "three";
     return g[0] * x + g[1] * y + g[2] * z + g[3] * w;
   }
 
+  interface Simplex3Sample {
+    value: number;
+    derivative: THREE.Vector3;
+  }
+
   class NoiseGenerator {
     private p: Uint8Array;
     private perm: Uint8Array;
     private permMod12: Uint8Array;
-    offset: THREE.Vector3;
+    offsetX: number;
+    offsetY: number;
+    offsetZ: number;
 
-    constructor(seed, offset) {
-      console.log(seed);
+    constructor(seed:number, offsetX:number, offsetY:number, offsetZ:number) {
       const random = alea(seed);
       this.p = buildPermutationTable(random);
       this.perm = new Uint8Array(512);
@@ -153,20 +159,25 @@ import * as THREE from "three";
         this.permMod12[i] = this.perm[i] % 12;
       }
 
-      this.offset = offset || new THREE.Vector3(0, 0, 0);
+      this.offsetX = offsetX || 0;
+      this.offsetY = offsetY || 0;
+      this.offsetZ = offsetZ || 0;
     }
 
-    simplex3Sample = (xin, yin, zin) => {
+    simplex3Sample = (xin:number, yin:number, zin:number):Simplex3Sample => {
       const permMod12 = this.permMod12;
       const perm = this.perm;
-      //let gradP = this.gradP;
+      
       var n0, n1, n2, n3;
 
       var F3 = 1.0 / 3.0;
       var s = (xin + yin + zin) * F3;
-      const i = fastFloor(xin + s);
-      const j = fastFloor(yin + s);
-      const k = fastFloor(zin + s);
+      // const i = fastFloor(xin + s);
+      // const j = fastFloor(yin + s);
+      // const k = fastFloor(zin + s);
+      const i = Math.floor(xin + s);
+      const j = Math.floor(yin + s);
+      const k = Math.floor(zin + s);
 
       const G3 = 1.0 / 6.0;
       const t = (i + j + k) * G3;
@@ -244,7 +255,7 @@ import * as THREE from "three";
 
       var gx0, gy0, gz0, gx1, gy1, gz1; /* Gradients at simplex corners */
       var gx2, gy2, gz2, gx3, gy3, gz3;
-      var /*t0, t1, t2, t3,*/ t20, t40, t21, t41, t22, t42, t23, t43;
+      var t20, t40, t21, t41, t22, t42, t23, t43;
 
       var gi0 = permMod12[ii + perm[jj + perm[kk]]];
       var gi1 = permMod12[ii + i1 + perm[jj + j1 + perm[kk + k1]]];
@@ -319,8 +330,6 @@ import * as THREE from "three";
         n3 = t43 * dot3(grad3[gi3], x3, y3, z3);
       }
 
-      //console.log(t0, t1, t2, t3);
-
       // GET DERIVATIVE
 
       let dx, dy, dz;
@@ -358,32 +367,20 @@ import * as THREE from "three";
         derivative: new THREE.Vector3(dx, dy, dz),
       };
 
-      // return {
-      //   value,
-      //   derivative,
-      // };
     }
     
-    curl3d = (x, y, z, xOffset, yOffset, zOffset) => {
-      var eps = 0.00001;
-      var curl = new THREE.Vector3();
-      let sampleX = this.simplex3Sample(x, y, z);
-      let sampleY = this.simplex3Sample(x + 100, y, z);
-      let sampleZ = this.simplex3Sample(x, y + 100, z);
+    curl3d = (x:number, y:number, z:number, offsetX?:number, offsetY?:number, offsetZ?:number):THREE.Vector3 => {
+
+      let sampleX = this.simplex3Sample(x + this.offsetX, y, z);
+      let sampleY = this.simplex3Sample(x, y + this.offsetY, z);
+      let sampleZ = this.simplex3Sample(x, y, z + this.offsetZ);
 
       var curl = new THREE.Vector3();
+
       curl.x = sampleZ.derivative.y - sampleY.derivative.z;
       curl.y = sampleX.derivative.z - sampleZ.derivative.x;
       curl.z = sampleY.derivative.x - sampleX.derivative.y;
-      // const sampleXa = noiseFunction(rawX + eps, rawY, rawZ);
-      // const sampleXb = noiseFunction(rawX - eps, rawY, rawZ);
-      // const dx = (sampleXa - sampleXb) / (2 * eps);
-      // const sampleYa = noiseFunction(rawX, rawY + eps, rawZ);
-      // const sampleYb = noiseFunction(rawX, rawY - eps, rawZ);
-      // const dy = (sampleYa - sampleYb) / (2 * eps);
-      // const sampleZa = noiseFunction(rawX, rawY, rawZ + eps);
-      // const sampleZb = noiseFunction(rawX, rawY, rawZ - eps);
-      // const dz = (sampleZa - sampleZb) / (2 * eps);
+
       return curl;
     }
   }
@@ -402,7 +399,7 @@ export function buildPermutationTable(random) {
   return p;
 }
 
-function alea(seed) {
+function alea(seed:number) {
   let s0 = 0;
   let s1 = 0;
   let s2 = 0;
@@ -434,7 +431,11 @@ function alea(seed) {
   };
 }
 
-function masher() {
+interface MasherReturn {
+  (value:string|number):number;
+}
+
+function masher():MasherReturn {
   let n = 0xefc8249d;
   return function (data) {
     data = data.toString();
